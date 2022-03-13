@@ -44,6 +44,7 @@ struct light_t {
 
 struct particle_t {
 	u8 rgb[3];
+	u8 dead;
 	float x;
 	float y;
 	float ax;
@@ -52,20 +53,6 @@ struct particle_t {
 	float vy;
 	float lifetime;
 	float max_lifetime;
-};
-
-struct particle_system_t {
-	u64 mem_length;
-	struct particle_t* particles;
-	u32 count;
-
-	void(*update_callback)(struct particle_t* p);
-	void(*death_callback)(struct particle_t* p);
-
-	u32    max_count;
-	float  max_lifetime;
-	u8     always_visible;
-	u8     can_die;
 };
 
 struct g_state_t {
@@ -86,6 +73,21 @@ struct g_state_t {
 	struct light_t lights[MAX_LIGHTS];
 };
 
+
+struct particle_system_t {
+	u64 mem_length;
+	struct particle_t* particles;
+	u32 count;
+
+	void(*update_callback)(struct particle_t* p, struct g_state_t* st);
+	void(*death_callback)(struct particle_t* p);
+
+	u32    max_count;
+	float  max_lifetime;
+	u8     always_visible;
+	u8     can_die;
+	u8 u[2];
+};
 
 void shutdown_engine();
 void init_engine(char* title);
@@ -118,7 +120,7 @@ void draw_box_outline(int x, int y, int w, int h, u8 always_visible);
 
 int  create_particle_system(
 		u32 particle_count,
-		void(*update_callback)(struct particle_t* p),
+		void(*update_callback)(struct particle_t* p, struct g_state_t* st),
 		void(*death_callback)(struct particle_t* p),
 		struct particle_system_t* system
 		);
@@ -132,6 +134,7 @@ u64 grid_index(int x, int y);
 u8 inside_rect(int rect_x, int rect_y, int rect_w, int rect_h, int x, int y);
 
 void use_color(u8 r, u8 g, u8 b);
+void use_any_color(int r, int g, int b);
 void back_color(u8 r, u8 g, u8 b);
 
 GLFWwindow* engine_win();

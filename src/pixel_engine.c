@@ -17,7 +17,13 @@ static u64 light_ubo_size = 0;
 
 void use_color(u8 r, u8 g, u8 b) {
 	glUniform3f(color_uniform, (float)r/15.0, (float)g/15.0, (float)b/15.0);
+
 }
+
+void use_any_color(int r, int g, int b) {
+	glUniform3f(color_uniform, (float)r/255.0, (float)g/255.0, (float)b/255.0);
+}
+
 
 void back_color(u8 r, u8 g, u8 b) {
 	glClearColor((float)r/15.0, (float)g/15.0, (float)b/15.0, 1.0);
@@ -45,7 +51,7 @@ int randomi(int min, int max) {
 }
 
 float randomf(float min, float max) {
-	return (min+(float)random_gen())/((float)RANDOM_GEN_MAX/(max-min));
+	return min+((float)random_gen())/((float)RANDOM_GEN_MAX/(max-min));
 }
 
 
@@ -69,7 +75,7 @@ void update_lights() {
 
 int create_particle_system(
 		u32 particle_count,
-		void(*update_callback)(struct particle_t* p),
+		void(*update_callback)(struct particle_t* p, struct g_state_t* st),
 		void(*death_callback)(struct particle_t* p),
 		struct particle_system_t* system) {
 	int res = 0;
@@ -119,8 +125,10 @@ void update_particles(struct particle_system_t* system) {
 
 			p->lifetime += g_st->dt;
 
-			system->update_callback(p);
-			draw_pixel(p->x, p->y, system->always_visible);
+			system->update_callback(p, g_st);
+			if(!p->dead) {
+				draw_pixel(p->x, p->y, system->always_visible);
+			}
 		}
 	}
 
