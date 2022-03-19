@@ -1,5 +1,5 @@
 #include "pixel_engine.h"
-#include "characters.h"
+#include "utils.h"
 
 //#define DEBUG
 #define _SSTRCTL sizeof(struct light_t)
@@ -15,44 +15,17 @@ static int always_visible_uniform = 0;
 static u32 light_ubo = 0;
 static u64 light_ubo_size = 0;
 
+#define FPS_LIMIT 0.01
+
 void use_color(u8 r, u8 g, u8 b) {
 	glUniform3f(color_uniform, (float)r/15.0, (float)g/15.0, (float)b/15.0);
-
 }
-
-void use_any_color(int r, int g, int b) {
-	glUniform3f(color_uniform, (float)r/255.0, (float)g/255.0, (float)b/255.0);
-}
-
 
 void back_color(u8 r, u8 g, u8 b) {
 	glClearColor((float)r/15.0, (float)g/15.0, (float)b/15.0, 1.0);
 }
 
-float normalize(float t, float min, float max) {
-	return (t-min)/(max-min);
-}
 
-float lerp(float t, float min, float max) {
-	return (max-min)*t+min;
-}
-
-float map(float t, float s_min, float s_max, float d_min, float d_max) {
-	return lerp(normalize(t, s_min, s_max), d_min, d_max);
-}
-
-int random_gen() {
-	g_st->seed = 0x343FD*g_st->seed+0x269EC3;
-	return (g_st->seed >> 16)&RANDOM_GEN_MAX;
-}
-
-int randomi(int min, int max) {
-	return random_gen()%(max-min)+min;
-}
-
-float randomf(float min, float max) {
-	return min+((float)random_gen())/((float)RANDOM_GEN_MAX/(max-min));
-}
 
 
 void update_light(u32 index) {
@@ -75,13 +48,13 @@ void update_lights() {
 
 int create_particle_system(
 		u32 particle_count,
+		u8  can_die,
 		void(*update_callback)(struct particle_t* p, struct g_state_t* st),
-		void(*death_callback)(struct particle_t* p),
 		struct particle_system_t* system) {
 	int res = 0;
 
 
-	if(system != NULL && update_callback != NULL && death_callback != NULL) {
+	if(system != NULL && update_callback != NULL) {
 
 		system->mem_length = particle_count*sizeof *system->particles;
 		if(!(system->particles = malloc(system->mem_length))) {
@@ -91,11 +64,16 @@ int create_particle_system(
 			goto failed;
 		}
 
+		for(u32 i = 0; i < particle_count; i++) {
+			system->particles[i].dead = can_die;
+			system->particles[i].index = i;
+		}
+
 		system->count = particle_count;
-	
+		system->can_die = can_die;
 		system->update_callback = update_callback;
-		system->death_callback = death_callback;
 		system->always_visible = 1;
+		system->last_dead = 0;
 	}
 
 failed:
@@ -116,16 +94,24 @@ void update_particles(struct particle_system_t* system) {
 		for(u32 i = 0; i < system->count; i++) {
 			p = &system->particles[i];
 			
-			if(system->can_die && (p->lifetime > p->max_lifetime)) {
-				p->lifetime = 0.0;
-				p->max_lifetime = system->max_lifetime;
-				system->death_callback(p);
-				continue;
+			if(!p->dead) {
+				if(system->can_die) {
+					if(p->max_lifetime > 0.0) {
+						if(p->lifetime > p->max_lifetime) {
+							p->lifetime = 0.0;
+							p->max_lifetime = system->max_lifetime;
+							p->dead = 1;
+							system->last_dead = i;
+							continue;
+						}
+					}
+				}
+				p->lifetime += g_st->dt;
 			}
 
-			p->lifetime += g_st->dt;
 
 			system->update_callback(p, g_st);
+		
 			if(!p->dead) {
 				draw_pixel(p->x, p->y, system->always_visible);
 			}
@@ -182,7 +168,7 @@ void init_engine(char* title) {
 
 	g_st->flags = 0;
 	g_st->time = 0.0;
-	g_st->seed = time(0);
+	set_seed(time(0));
 
 	if(!glfwInit()) {
 		fprintf(stderr, "glfw failed!\n");
@@ -278,8 +264,7 @@ void start_engine(void(*callback)(struct g_state_t*)) {
 
 		"struct light_t {"
 			"float brightness;"
-			"float x;"
-			"float y;"
+			"vec2 pos;"
 			"float _r;"
 		"};"
 
@@ -289,26 +274,27 @@ void start_engine(void(*callback)(struct g_state_t*)) {
 			"light_t lights[8];\n"
 		"};\n"
 
+
+		// TODO: make lights better (later..)
+
+		"\n"
+		"#define BRIGHTNESS 0.8\n"
+		"#define L 0.6\n"
+		"#define Q 0.5\n"
+
 		"void main() {"
 			"if(always_visible > 0) {"
 				"gl_FragColor = vec4(color, 1.0);"
 				"return;"
 			"}"
-			"vec3 col = vec3(0.0, 0.0, 0.0);"
-			"float l = 1.0;"
-			""
-			""
-			"vec2 lp = vec2(lights[0].x, lights[0].y);"
-			"vec2 v = lp-f_pos;"
-			
-			"l = length(v);"
-			""
-			"l = 1.0-l;"
-			""
 
+			"float l = distance(pos, lights[0].pos);"
+			"l = floor(l*25.0)*0.2;"
+			"float i = BRIGHTNESS/(1.0+L*l+Q*pow(l,2.0));"
+			
 			"vec3 lcolor = vec3(1.0, 0.7, 0.56);"
 
-			"gl_FragColor = vec4(color*l, 1.0);"
+			"gl_FragColor = vec4(color*i, 1.0);"
 		"}";
 
 	const char* vertex_source =

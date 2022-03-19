@@ -12,12 +12,10 @@ struct enemy_t {
 	int y;
 	int health;
 	int max_health;
+	int type;
 
 	struct weapon_t weapon;
 };
-
-
-void spawn_enemy(int y, int max_health, struct weapon_t* weapon);
 
 
 #endif
