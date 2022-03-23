@@ -16,9 +16,6 @@
 #define MAX_LIGHTS 8
 #define LIGHT_UBO_BINDING 1
 
-#define FLG_MOUSE_LDOWN (1<<1)
-#define FLG_MOUSE_RDOWN (1<<2)
-
 /*
 
 
@@ -58,9 +55,11 @@ struct particle_t {
 struct g_state_t {
 	int      flags;
 	double   time;
-	double   dt;    // delta time
+	double   dt;    // frame delta time
 	u8       active_light_count;
 
+	int      fps;
+	int      max_fps;
 	int      window_width;
 	int      window_height;
 	int      max_row;

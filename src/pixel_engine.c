@@ -1,5 +1,9 @@
+#include <sys/unistd.h>
+
 #include "pixel_engine.h"
 #include "utils.h"
+
+
 
 //#define DEBUG
 #define _SSTRCTL sizeof(struct light_t)
@@ -15,7 +19,6 @@ static int always_visible_uniform = 0;
 static u32 light_ubo = 0;
 static u64 light_ubo_size = 0;
 
-#define FPS_LIMIT 0.01
 
 void use_color(u8 r, u8 g, u8 b) {
 	glUniform3f(color_uniform, (float)r/15.0, (float)g/15.0, (float)b/15.0);
@@ -93,7 +96,7 @@ void update_particles(struct particle_system_t* system) {
 
 		for(u32 i = 0; i < system->count; i++) {
 			p = &system->particles[i];
-			
+
 			if(!p->dead) {
 				if(system->can_die) {
 					if(p->max_lifetime > 0.0) {
@@ -246,6 +249,8 @@ void init_engine(char* title) {
 	glBindBufferRange(GL_UNIFORM_BUFFER, LIGHT_UBO_BINDING, light_ubo, 0, light_ubo_size);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+
+	g_st->max_fps = 60.0;
 }
 
 void start_engine(void(*callback)(struct g_state_t*)) {
@@ -308,6 +313,7 @@ void start_engine(void(*callback)(struct g_state_t*)) {
 		;
 
 	const u32 program = plx_create_shader(vertex_source, fragment_source);
+
 	glPointSize(PIXEL_SIZE);
 	
 	glUseProgram(program);
@@ -324,37 +330,36 @@ void start_engine(void(*callback)(struct g_state_t*)) {
 		update_light(i);
 	}
 
+
+	int frames = 0;
+	double second_counter = 0.0;
+
+
 	while(!glfwWindowShouldClose(window)) {
 		g_st->time = glfwGetTime();
 
 		glfwPollEvents();
-	
-		if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)) {
-			g_st->flags |= FLG_MOUSE_LDOWN;
-		}
-		else {
-			g_st->flags &= ~FLG_MOUSE_LDOWN;
-		}
-	
-		if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT)) {
-			g_st->flags |= FLG_MOUSE_RDOWN;
-		}
-		else {
-			g_st->flags &= ~FLG_MOUSE_RDOWN;
-		}	
-
 
 		glClear(GL_COLOR_BUFFER_BIT);
 		glUseProgram(program);
-		
 
-		
+
 		callback(g_st);
 
 		glfwSwapBuffers(window);
+		g_st->dt = glfwGetTime()-g_st->time;
+		
+		second_counter += glfwGetTime()-g_st->time;
+		frames++;
 
+		if(second_counter >= 1.0) {
+			g_st->fps = ((double)frames)*0.5+g_st->max_fps*0.5;
+			second_counter = 0.0;
 
-		g_st->dt = glfwGetTime()-g_st->time;	
+			frames = 0;
+
+		}
+
 	}
 	
 	glDeleteProgram(program);
@@ -445,22 +450,6 @@ void draw_object(struct object_t* obj, u8 always_visible) {
 	}
 }
 
-/*
-void draw_char(int x, int y, char chr) {
-	if(chr >= 0x20 && chr <= 0x7E) {
-		const int idx = CHAR_HEIGHT*(122-chr);
-		for(int i = 0; i < CHAR_HEIGHT; i++) {
-			int g = 0b10000;
-			for(int j = 0; j < CHAR_WIDTH; j++) {
-				if(font_data[i+idx] & g) {
-					draw_pixel(x+j, y+i);
-				}
-				g >>= 1;
-			}
-		}
-	}
-}	
-*/
 void draw_line(u16 x0, u16 y0, u16 x1, u16 y1, u8 always_visible) {
 	int width = x1-x0;
 	int height = y1-y0;

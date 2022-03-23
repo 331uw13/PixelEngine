@@ -5,10 +5,11 @@
 
 
 void weapon_update(struct weapon_t* w) {
-	
+	// TODO
 }
 
 void weapon_reload(struct weapon_t* w) {
+	// TODO
 }
 
 int weapon_can_shoot(struct weapon_t* w) {
@@ -32,7 +33,7 @@ int weapon_shoot(struct weapon_t* w) {
 			w->ammo -= w->projectile_count;
 		
 		
-			damage = 1; // TODO
+			damage = 1; // TODO...
 		}
 	}
 	return damage;
