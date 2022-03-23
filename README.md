@@ -16,16 +16,16 @@ Important things to do:
 
 (debian based systems)
 ```bash
-apt install libglew-dev libglfw3-dev libsdl2-dev libsdl2-mixer-dev
+apt install libglew-dev libglfw3-dev
 ```
 
 (arch based systems)
 ```bash
-pacman -S glew glfw-x11 sdl2 sdl2_mixer
+pacman -S glew glfw-x11
 ```
 or
 ```bash
-pacman -S glew glfw-wayland sdl2 sdl2_mixer
+pacman -S glew glfw-wayland
 ```
 
 - compile
