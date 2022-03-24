@@ -1,39 +1,56 @@
-# PixelEngine
-Engine to draw pixels and textures on screen with using OpenGL and GLFW
+PixelEngine
+===========
 
-(work in progress)
+An engine that draws pixels and textures on screen using OpenGL and GLFW.
 
-Important things to do:
-  - optimize functions that are used alot
-  - low resolution to mimic old games better
-  - small color errors for rendering (because i think it may look kinda cool)
-  - add sound later
+Work in progress.
 
+## Features yet to be added:
 
-## Instructions for compiling and using the library
-#### (THE PROJECT IS NOT IN ITS COMPLETE STATE SO ALOT CHANGES WILL BE MADE)
+- Optimize frequently used functions
 
-- install libraries:
+- Low resolution to mimic old games better
 
-(debian based systems)
-```bash
-apt install libglew-dev libglfw3-dev
-```
+- Small color errors for rendering (because I think it may look kinda cool)
 
-(arch based systems)
-```bash
-pacman -S glew glfw-x11
-```
-or
-```bash
-pacman -S glew glfw-wayland
-```
+- Add sound later
 
-- compile
+## Instructions for building and using the engine
 
-```bash
-git clone https://github.com/331uw13/PixelEngine.git
-cd PixelEngine
-cmake .
-make
-```
+**The project is not in its complete state, so many changes could be introduced.**
+
+1. Install required dependencies
+
+    - For Debian-based systems:
+
+        ```bash
+        apt install libglew-dev libglfw3-dev
+        ```
+
+    - For Arch-based systems:
+
+        ```bash
+        pacman -S glew glfw-x11
+        ```
+
+        Or:
+
+        ```bash
+        pacman -S glew glfw-wayland
+        ```
+
+2. Clone the repository
+
+    ```bash
+    git clone https://github.com/331uw13/PixelEngine.git
+    cd PixelEngine
+    ```
+
+3. Build and run the project
+
+    ```bash
+    cmake .
+    make
+    ./testing/a.out
+    ```
+
