@@ -21,7 +21,7 @@ void set_seed(int s) {
 
 int random_gen() {
 	g_seed = 0x343FD*g_seed+0x269EC3;
-	return (g_seed >> 16)&RANDOM_GEN_MAX;
+	return (g_seed>>16)&RANDOM_GEN_MAX;
 }
 
 int randomi(int min, int max) {
@@ -31,4 +31,5 @@ int randomi(int min, int max) {
 float randomf(float min, float max) {
 	return min+((float)random_gen())/((float)RANDOM_GEN_MAX/(max-min));
 }
+
 

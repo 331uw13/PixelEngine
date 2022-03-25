@@ -11,10 +11,11 @@
 #include <time.h>
 
 #include "shader.h"
-#include "object.h"
+#include "entity.h"
+#include "state.h"
 
-#define MAX_LIGHTS 8
 #define LIGHT_UBO_BINDING 1
+
 
 /*
 
@@ -31,12 +32,8 @@ TODO:
 
 */
 
-struct light_t {
-	float brightness;
-	float x;
-	float y;
-	float _reserved;
-};
+#define PARTICLE_SYSTEM struct particle_system_t*
+#define PARTICLE        struct particle_t*
 
 struct particle_t {
 	u8 rgb[3];
@@ -52,48 +49,25 @@ struct particle_t {
 	float max_lifetime;
 };
 
-struct g_state_t {
-	int      flags;
-	double   time;
-	double   dt;    // frame delta time
-	u8       active_light_count;
-
-	int      fps;
-	int      max_fps;
-	int      window_width;
-	int      window_height;
-	int      max_row;
-	int      max_col;
-
-	char* grid;
-	u64 grid_length;
-	
-	struct light_t lights[MAX_LIGHTS];
-};
-
-
 struct particle_system_t {
-	struct particle_t* particles;
-	u64 mem_length;
-	u32 count;
-	u32 last_dead;
+	PARTICLE particles;
+	u64      mem_length;
+	u32      last_dead;
+	u32      particle_count;
 
-	void(*update_callback)(struct particle_t* p, struct g_state_t* st);
-	
-	u32    max_count;
-	float  max_lifetime;
 	u8     always_visible;
 	u8     can_die;
 	
-	u32 u[2];  // for storing values
+	void(*update_callback)(PARTICLE p, STATE st);
+	
+	int u[2];  // for storing user values
 };
 
-void shutdown_engine();
-void init_engine(char* title);
-void start_engine(void(*callback)(struct g_state_t*));
 
-void mouse_pos(u16* x, u16* y);
-void normal_mouse_pos(float* x, float* y);
+
+void shutdown_engine();
+void init_engine(char* title, u16 width, u16 height, int flags);
+void start_engine(void(*callback)(STATE), void(*start_callback)(STATE));
 
 void update_light(u32 index);
 void update_lights();
@@ -102,25 +76,25 @@ void _draw_f(float x, float y, float w, float h);
 
 // TODO: change all dimensions to integer type
 
-void draw_pixel(int x, int y, u8 always_visible);
+void draw_pixel(u32 x, u32 y);
+
+/*
 void draw_area(int x, int y, int w, int h, u8 always_visible);
-void draw_object(struct object_t* obj, u8 always_visible);
+void draw_object(struct object_t* obj, int x, int y, u8 always_visible);
 void draw_line(u16 x0, u16 y0, u16 x1, u16 y1, u8 always_visible);
 void draw_box_outline(int x, int y, int w, int h, u8 always_visible);
+*/
 
-
-int  create_particle_system(
+PARTICLE_SYSTEM create_particle_system(
 		u32 particle_count,
 		u8  can_die,
-		void(*update_callback)(struct particle_t* p, struct g_state_t* st),
-		struct particle_system_t* system
-		);
+		void(*update_callback)(PARTICLE p, STATE st));
 
-void destroy_particle_system(struct particle_system_t* system);
-void update_particles(struct particle_system_t* system);
+void destroy_particle_system(PARTICLE_SYSTEM system);
+void update_particles(PARTICLE_SYSTEM system);
 
 int ray_cast(int src_x, int src_y, int dst_x, int dst_y, int* hit_x, int* hit_y);
-u64 grid_index(int x, int y);
+u64 grid_index(u32 x, u32 y);
 
 u8 inside_rect(int rect_x, int rect_y, int rect_w, int rect_h, int x, int y);
 
@@ -129,13 +103,5 @@ void back_color(u8 r, u8 g, u8 b);
 
 GLFWwindow* engine_win();
 
-
-
-
-
-
-
-
 #endif
-
 

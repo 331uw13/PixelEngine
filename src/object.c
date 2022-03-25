@@ -6,7 +6,7 @@
 
 
 
-void unload_object(struct object_t* obj) {
+void unload_object(OBJECT obj) {
 	if(obj != NULL) {
 		if(obj->texture_data != NULL) {
 			free(obj->texture_data);
@@ -15,7 +15,7 @@ void unload_object(struct object_t* obj) {
 	}
 }
 
-int load_object_mem(struct object_t* obj, char* data, u64 size) {
+int load_object_mem(OBJECT obj, char* data, u64 size) {
 	int res = 0;
 
 	if(obj != NULL) {
@@ -37,13 +37,5 @@ int load_object_mem(struct object_t* obj, char* data, u64 size) {
 
 	return res;
 }
-
-
-
-
-
-
-
-
 
 

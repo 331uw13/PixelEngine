@@ -6,7 +6,7 @@
 
 
 
-u8 plx_shader_ok(u32 id, u32 type) {
+u8 shader_ok(u32 id, u32 type) {
 	int p = 0;
 	u8 res = 1;
 
@@ -49,7 +49,7 @@ u8 plx_shader_ok(u32 id, u32 type) {
 }
 
 
-u32 plx_create_shader(const char* vssrc, const char* fssrc) {
+u32 create_shader(const char* vssrc, const char* fssrc) {
 
 	u32 program = 0;
 
@@ -70,14 +70,14 @@ u32 plx_create_shader(const char* vssrc, const char* fssrc) {
 	glShaderSource(fs, 1, &fssrc, NULL);
 	glCompileShader(fs);
 
-	if(!plx_shader_ok(fs, SHADER_MODULE)) {
+	if(!shader_ok(fs, SHADER_MODULE)) {
 		goto finish;
 	}
 
 	glShaderSource(vs, 1, &vssrc, NULL);
 	glCompileShader(vs);
 
-	if(!plx_shader_ok(vs, SHADER_MODULE)) {
+	if(!shader_ok(vs, SHADER_MODULE)) {
 		goto finish;
 	}
 
@@ -90,7 +90,7 @@ u32 plx_create_shader(const char* vssrc, const char* fssrc) {
 	glDeleteShader(fs);
 	glDeleteShader(vs);
 	
-	if(!plx_shader_ok(program, SHADER_PROGRAM)) {
+	if(!shader_ok(program, SHADER_PROGRAM)) {
 		goto finish;
 	}
 

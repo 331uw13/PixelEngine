@@ -9,7 +9,7 @@
 #define _SSTRCTL sizeof(struct light_t)
 
 static GLFWwindow* window = NULL;
-static struct g_state_t* g_st = NULL;
+static STATE g_st = NULL;
 
 static int color_uniform = 0;
 static int position_uniform = 0;
@@ -19,17 +19,19 @@ static int always_visible_uniform = 0;
 static u32 light_ubo = 0;
 static u64 light_ubo_size = 0;
 
+static float g_use_rgb[3];
+
+
 
 void use_color(u8 r, u8 g, u8 b) {
-	glUniform3f(color_uniform, (float)r/15.0, (float)g/15.0, (float)b/15.0);
+	g_use_rgb[0] = (float)r/15.0;
+	g_use_rgb[1] = (float)g/15.0;
+	g_use_rgb[2] = (float)b/15.0;
 }
 
 void back_color(u8 r, u8 g, u8 b) {
 	glClearColor((float)r/15.0, (float)g/15.0, (float)b/15.0, 1.0);
 }
-
-
-
 
 void update_light(u32 index) {
 	if(index < MAX_LIGHTS) {
@@ -48,53 +50,73 @@ void update_lights() {
 	glBufferData(GL_UNIFORM_BUFFER, light_ubo_size, g_st->lights, GL_STREAM_DRAW);
 }
 
+PARTICLE_SYSTEM create_particle_system(
+		u32 particle_count, u8 can_die, void(*update_callback)(PARTICLE p, STATE st)) {
 
-int create_particle_system(
-		u32 particle_count,
-		u8  can_die,
-		void(*update_callback)(struct particle_t* p, struct g_state_t* st),
-		struct particle_system_t* system) {
-	int res = 0;
+	PARTICLE_SYSTEM system = NULL;
 
-
-	if(system != NULL && update_callback != NULL) {
-
-		system->mem_length = particle_count*sizeof *system->particles;
-		if(!(system->particles = malloc(system->mem_length))) {
-			fprintf(stderr, "failed to allocate memory for particles, tried to allocate %li bytes of memory!\n",
-						system->mem_length);
-			res = errno;
-			goto failed;
-		}
-
-		for(u32 i = 0; i < particle_count; i++) {
-			system->particles[i].dead = can_die;
-			system->particles[i].index = i;
-		}
-
-		system->count = particle_count;
-		system->can_die = can_die;
-		system->update_callback = update_callback;
-		system->always_visible = 1;
-		system->last_dead = 0;
+	if(update_callback == NULL) {
+		fprintf(stderr, "particle systems require callback, its useless now. :(\n");
+		goto give_up;
 	}
 
-failed:
-	return res;
+	if((system = malloc(sizeof *system))) {
+		
+		system->mem_length = sizeof *system->particles*particle_count;
+		system->particles = NULL;
+
+		if((system->particles = malloc(system->mem_length))) {
+			
+			system->particle_count = particle_count;
+			system->can_die   = can_die;
+			system->always_visible = 1;
+			system->last_dead = 0;
+			system->u[0] = 0;
+			system->u[1] = 0;
+			system->update_callback = update_callback;
+
+
+			for(u32 i = 0; i < particle_count; i++) {
+				PARTICLE p = &system->particles[i];
+				p->rgb[0] = 16;
+				p->rgb[1] = 16;
+				p->rgb[2] = 16;
+				p->index = i;
+				p->dead  = can_die;
+				
+				p->x = 0.0;
+				p->y = 0.0;
+				p->vx = 0.0;
+				p->vy = 0.0;
+				p->ax = 0.0;
+				p->ay = 0.0;
+				p->lifetime = 0.0;
+				p->max_lifetime = 0.0;
+			}
+
+		}
+
+
+	}
+
+give_up:
+	return system;
 }
 
-void destroy_particle_system(struct particle_system_t* system) {
+void destroy_particle_system(PARTICLE_SYSTEM system) {
 	if(system != NULL) {
-		free(system->particles);
+		if(system->particles != NULL) {
+			free(system->particles);
+		}
+		free(system);
 	}
 }
 
-void update_particles(struct particle_system_t* system) {
-	
+void update_particles(PARTICLE_SYSTEM system) {
 	if(system != NULL && system->particles != NULL) {
-		struct particle_t* p = NULL;
+		PARTICLE p = NULL;
 
-		for(u32 i = 0; i < system->count; i++) {
+		for(u32 i = 0; i < system->particle_count; i++) {
 			p = &system->particles[i];
 
 			if(!p->dead) {
@@ -102,7 +124,6 @@ void update_particles(struct particle_system_t* system) {
 					if(p->max_lifetime > 0.0) {
 						if(p->lifetime > p->max_lifetime) {
 							p->lifetime = 0.0;
-							p->max_lifetime = system->max_lifetime;
 							p->dead = 1;
 							system->last_dead = i;
 							continue;
@@ -116,44 +137,14 @@ void update_particles(struct particle_system_t* system) {
 			system->update_callback(p, g_st);
 		
 			if(!p->dead) {
-				draw_pixel(p->x, p->y, system->always_visible);
+				draw_pixel(p->x, p->y);
 			}
 		}
 	}
 
 }
 
-
-void mouse_pos(u16* x, u16* y) {
-	double xd = 0;
-	double yd = 0;
-	glfwGetCursorPos(window, &xd, &yd);
-	
-	if(x != NULL) {
-		*x = (u16)xd/PIXEL_SIZE;
-	}
-	if(y != NULL) {
-		*y = (u16)yd/PIXEL_SIZE;
-	}
-}
-
-void normal_mouse_pos(float* x, float* y) {
-	double xd = 0;
-	double yd = 0;
-	glfwGetCursorPos(window, &xd, &yd);
-
-
-	if(x != NULL) {
-		*x = map(xd, 0.0, g_st->window_width, -1.0, 1.0);
-	}
-
-	if(y != NULL) {
-		*y = map(yd, 0.0, g_st->window_height, 1.0, -1.0);
-	}
-}
-
-
-void init_engine(char* title) {
+void init_engine(char* title, u16 width, u16 height, int flags) {
 	
 	window = NULL;
 	g_st = NULL;
@@ -164,6 +155,10 @@ void init_engine(char* title) {
 	light_ubo = 0;
 	light_ubo_size = 0;
 	
+	g_use_rgb[0] = 0.0;
+	g_use_rgb[1] = 0.0;
+	g_use_rgb[2] = 0.0;
+
 	if(!(g_st = malloc(sizeof *g_st))) {
 		fprintf(stderr, "Failed to allocate memory for g_state_t!\n");
 		return;
@@ -171,6 +166,11 @@ void init_engine(char* title) {
 
 	g_st->flags = 0;
 	g_st->time = 0.0;
+	g_st->vao = 0;
+	g_st->vbo = 0;
+	g_st->pixel_data = NULL;
+	g_st->pixel_mem_length = 0;
+
 	set_seed(time(0));
 
 	if(!glfwInit()) {
@@ -186,27 +186,44 @@ void init_engine(char* title) {
 	glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
 	glfwWindowHint(GLFW_CENTER_CURSOR, GLFW_TRUE);
 
+	glfwWindowHint(GLFW_RED_BITS, 2);
+	glfwWindowHint(GLFW_GREEN_BITS, 2);
+	glfwWindowHint(GLFW_BLUE_BITS, 2);
+	glfwWindowHint(GLFW_REFRESH_RATE, 60);
+
 	int mon_x = 0;
 	int mon_y = 0;
 	int mon_w = 0;
 	int mon_h = 0;
 
 	glfwGetMonitorWorkarea(glfwGetPrimaryMonitor(), &mon_x, &mon_y, &mon_w, &mon_h);
+	
+	if(flags & FLG_INIT_FULLSCREEN) {	
+		#ifdef DEBUG
+		mon_w/=2;
+		mon_h/=2;
+		mon_x += mon_w;
+		#endif
 
-#ifdef DEBUG
-	mon_w/=2;
-	mon_h/=2;
-	mon_x += mon_w;
-#endif
+	}
+	else {
+		mon_x = mon_w/2-(width/2);
+		mon_y = mon_h/2-(height/2);
+		mon_w = width;
+		mon_h = height;
+	}
 
 	window = glfwCreateWindow(mon_w, mon_h, title, NULL, NULL);
+	
 	if(window == NULL) {
 		fprintf(stderr, "failed to create window!\n");
 		shutdown_engine();
 		return;
 	}
 	
+
 	glfwSetWindowPos(window, mon_x, mon_y);
+	
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1);
 
@@ -250,140 +267,39 @@ void init_engine(char* title) {
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 
-	g_st->max_fps = 60.0;
+
+	g_st->num_pixels = g_st->max_col*g_st->max_row;
+	const u32 stride = sizeof(float)*5;
+
+	g_st->pixel_mem_length = stride*g_st->num_pixels;
+
+
+	g_st->pixel_data = malloc(g_st->pixel_mem_length);
+	//printf("%p, %li\n", pixels, vbo_size);
+	
+	if(g_st->pixel_data != NULL) {		
+		glGenVertexArrays(1, &g_st->vao);
+		glBindVertexArray(g_st->vao);
+
+		glGenBuffers(1, &g_st->vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, g_st->vbo);
+
+		glBufferData(GL_ARRAY_BUFFER, g_st->pixel_mem_length, g_st->pixel_data, GL_STREAM_DRAW);
+
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, 0);
+		glEnableVertexAttribArray(0);
+
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float)*2));
+		glEnableVertexAttribArray(1);
+	}
+	else {
+		fprintf(stderr, "failed to allocate memory for pixel data\nerrno:%i\n", errno);
+	}
+
+
+	entity_set_next_id(0);
+	g_st->max_fps = 60;
 }
-
-void start_engine(void(*callback)(struct g_state_t*)) {
-	const char* fragment_source = 
-		"#version 330\n"
-		"#ifdef GL_ARB_shading_language_420pack\n"
-		"#extension GL_ARB_shading_language_420pack : require\n"
-		"#endif\n"
-		
-		"uniform vec3 color;"
-		"uniform vec2 pos;"
-		"uniform vec2 size;"
-		"uniform int  always_visible;" //  !!! TODO: remove branching from shaders!
-
-		"in vec2 f_pos;"
-
-		"struct light_t {"
-			"float brightness;"
-			"vec2 pos;"
-			"float _r;"
-		"};"
-
-		"\n"
-		
-		"layout(std140, binding = 1) uniform light_array {"
-			"light_t lights[8];\n"
-		"};\n"
-
-
-		// TODO: make lights better (later..)
-
-		"\n"
-		"#define BRIGHTNESS 0.8\n"
-		"#define L 0.6\n"
-		"#define Q 0.5\n"
-
-		"void main() {"
-			"if(always_visible > 0) {"
-				"gl_FragColor = vec4(color, 1.0);"
-				"return;"
-			"}"
-
-			"float l = distance(pos, lights[0].pos);"
-			"l = floor(l*25.0)*0.2;"
-			"float i = BRIGHTNESS/(1.0+L*l+Q*pow(l,2.0));"
-			
-			"vec3 lcolor = vec3(1.0, 0.7, 0.56);"
-
-			"gl_FragColor = vec4(color*i, 1.0);"
-		"}";
-
-	const char* vertex_source =
-		"#version 330\n"
-		"layout(location = 0) in vec2 i_pos;"
-		"out vec2 f_pos;"
-		"void main() {"
-			"gl_Position = vec4(i_pos.x, i_pos.y, 0.0, 1.0);"
-			"f_pos = i_pos;"
-		"}"
-		;
-
-	const u32 program = plx_create_shader(vertex_source, fragment_source);
-
-	glPointSize(PIXEL_SIZE);
-	
-	glUseProgram(program);
-	color_uniform      = glGetUniformLocation(program, "color");
-	position_uniform   = glGetUniformLocation(program, "pos");
-	size_uniform       = glGetUniformLocation(program, "size");
-	always_visible_uniform  = glGetUniformLocation(program, "always_visible");
-
-	for(int i = 0; i < MAX_LIGHTS; i++) {
-		g_st->lights[i].brightness = 0.0;
-		g_st->lights[i].x = 0.0;
-		g_st->lights[i].y = 0.0;
-		g_st->lights[i]._reserved = 0.0;
-		update_light(i);
-	}
-
-
-	int frames = 0;
-	double second_counter = 0.0;
-
-
-	while(!glfwWindowShouldClose(window)) {
-		g_st->time = glfwGetTime();
-
-		glfwPollEvents();
-
-		glClear(GL_COLOR_BUFFER_BIT);
-		glUseProgram(program);
-
-
-		callback(g_st);
-
-		glfwSwapBuffers(window);
-		g_st->dt = glfwGetTime()-g_st->time;
-		
-		second_counter += glfwGetTime()-g_st->time;
-		frames++;
-
-		if(second_counter >= 1.0) {
-			g_st->fps = ((double)frames)*0.5+g_st->max_fps*0.5;
-			second_counter = 0.0;
-
-			frames = 0;
-
-		}
-
-	}
-	
-	glDeleteProgram(program);
-}
-
-void shutdown_engine() {
-	
-	if(g_st != NULL) {
-		free(g_st->grid);
-		free(g_st);
-	}
-	
-	if(window != NULL) {
-		if(light_ubo > 0) {
-			glDeleteBuffers(1, &light_ubo);
-		}
-		glfwDestroyWindow(window);
-	}
-	
-	glfwTerminate();
-	puts("exit.");
-	exit(0);
-}
-
 
 void _draw_f(float x, float y, float w, float h) {
 
@@ -412,7 +328,185 @@ void _draw_f(float x, float y, float w, float h) {
 	glUniform2f(size_uniform, -1, -1);
 }
 
+void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
+	const char* fragment_source = 
+		"#version 330\n"
+		"#ifdef GL_ARB_shading_language_420pack\n"
+		"#extension GL_ARB_shading_language_420pack : require\n"
+		"#endif\n"
+		
+		"uniform vec3 color;"
+		"uniform vec2 pos;"
+		"uniform vec2 size;"
+		"uniform int  always_visible;" //  !!! TODO: remove branching from shaders!
 
+
+		"in vec2 f_pos;"
+		"in vec3 f_col;"
+
+		"struct light_t {"
+			"float brightness;"
+			"vec2 pos;"
+			"float _r;"
+		"};"
+
+		"\n"
+		
+		"layout(std140, binding = 1) uniform light_array {"
+			"light_t lights[8];\n"
+		"};\n"
+
+
+		// TODO: make lights better (later..)
+
+		"\n"
+		"#define BRIGHTNESS 0.8\n"
+		"#define L 0.6\n"
+		"#define Q 0.5\n"
+
+		"void main() {"
+			"vec3 col = f_col;"
+			
+			"gl_FragColor = vec4(col, 1.0);"
+
+			/*
+			"float l = distance(pos, lights[0].pos);"
+			"l = floor(l*25.0)*0.2;"
+			"float i = BRIGHTNESS/(1.0+L*l+Q*pow(l,2.0));"
+			
+			"vec3 lcolor = vec3(1.0, 0.7, 0.56);"
+
+			"gl_FragColor = vec4(col*i, 1.0);"
+			*/
+		"}";
+
+	const char* vertex_source =
+		"#version 330\n"
+		"layout(location = 0) in vec2 i_pos;"
+		"layout(location = 1) in vec3 i_col;"
+		
+		"out vec2 f_pos;"
+		"out vec3 f_col;"
+
+		"void main() {"
+			"gl_Position = vec4(i_pos.x, i_pos.y, 0.0, 1.0);"
+			"f_pos = i_pos;"
+			"f_col = i_col;"
+		"}"
+		;
+
+	const u32 program = create_shader(vertex_source, fragment_source);
+
+	glPointSize(PIXEL_SIZE);
+	
+	glUseProgram(program);
+	color_uniform      = glGetUniformLocation(program, "color");
+	position_uniform   = glGetUniformLocation(program, "pos");
+	size_uniform       = glGetUniformLocation(program, "size");
+	always_visible_uniform  = glGetUniformLocation(program, "always_visible");
+
+	for(int i = 0; i < MAX_LIGHTS; i++) {
+		g_st->lights[i].brightness = 0.0;
+		g_st->lights[i].x = 0.0;
+		g_st->lights[i].y = 0.0;
+		g_st->lights[i]._reserved = 0.0;
+		update_light(i);
+	}
+
+
+	int frames = 0;
+	double second_counter = 0.0;
+
+	if(start_callback != NULL) {
+		start_callback(g_st);
+	}
+
+
+
+	glBindBuffer(GL_ARRAY_BUFFER, g_st->vbo);
+
+	while(!glfwWindowShouldClose(window)) {
+		g_st->time = glfwGetTime();
+
+		glfwPollEvents();
+		glClear(GL_COLOR_BUFFER_BIT);
+	
+
+		memset(g_st->pixel_data, 0, g_st->pixel_mem_length);
+
+
+		glUseProgram(program);
+	
+	
+		callback(g_st);
+
+		if(g_st->flags & FLG_VBO_UPDATE) {
+		
+			glBufferSubData(GL_ARRAY_BUFFER, 0, g_st->pixel_mem_length, g_st->pixel_data);
+			g_st->flags &= ~FLG_VBO_UPDATE;
+		
+		}
+		
+		glBindVertexArray(g_st->vao);
+		glDrawArrays(GL_POINTS, 0, g_st->num_pixels);
+
+		glfwSwapBuffers(window);
+		g_st->dt = glfwGetTime()-g_st->time;
+
+		second_counter += glfwGetTime()-g_st->time;
+		frames++;
+
+		if(second_counter >= 1.0) {
+			g_st->fps = ((double)frames)*0.5+g_st->max_fps*0.5;
+			second_counter = 0.0;
+
+			frames = 0;
+		}
+	}
+	
+	glDeleteProgram(program);
+}
+
+void shutdown_engine() {
+	if(g_st != NULL) {
+		glDeleteVertexArrays(1, &g_st->vao);
+		glDeleteBuffers(1, &g_st->vbo);
+		
+		free(g_st->pixel_data);
+		free(g_st->grid);
+		free(g_st);
+	}
+	
+	if(window != NULL) {
+		if(light_ubo > 0) {
+			glDeleteBuffers(1, &light_ubo);
+		}
+		glfwDestroyWindow(window);
+	
+	}
+	
+	glfwTerminate();
+	puts("exit.");
+	exit(0);
+}
+
+void draw_pixel(u32 x, u32 y) {
+
+	const u32 i = (y*g_st->max_col+(x*5));
+	
+	if(i < g_st->num_pixels) {
+		g_st->pixel_data[i]   = map(x, 0, g_st->max_col, -1.0,  1.0);
+		g_st->pixel_data[i+1] = map(y, 0, g_st->max_row,  1.0, -1.0);
+		g_st->pixel_data[i+2] = 1.0;
+		g_st->pixel_data[i+3] = 1.0;
+		g_st->pixel_data[i+4] = 1.0;
+
+		g_st->flags |= FLG_VBO_UPDATE;
+	}
+}
+
+
+/*
 void draw_pixel(int x, int y, u8 always_visible) {
 	float rx = map(x*PIXEL_SIZE, 0.0, g_st->window_width, -1.0, 1.0);
 	float ry = map(y*PIXEL_SIZE, 0.0, g_st->window_height, 1.0, -1.0);
@@ -432,7 +526,7 @@ void draw_area(int x, int y, int w, int h, u8 always_visible) {
 	}
 }
 
-void draw_object(struct object_t* obj, u8 always_visible) {
+void draw_object(OBJECT obj, int x, int y, u8 always_visible) {
 	if(obj != NULL && obj->texture_data != NULL && obj->loaded) {
 		u32 p = 0;
 		for(u32 i = 0; i < obj->texture_pixels; i++) {
@@ -442,8 +536,8 @@ void draw_object(struct object_t* obj, u8 always_visible) {
 					obj->texture_data[p+4]
 					);
 			draw_pixel(
-					obj->x+obj->texture_data[p],
-				   	obj->y+obj->texture_data[p+1], always_visible);
+					x+obj->texture_data[p],
+				   	y+obj->texture_data[p+1], always_visible);
 
 			p += 5;
 		}
@@ -498,7 +592,7 @@ void draw_box_outline(int x, int y, int w, int h, u8 always_visible) {
 	draw_area(x+w, y, 1, h+1, always_visible);
 }
 
-u64 grid_index(int x, int y) {
+u64 grid_index(u32 x, u32 y) {
 	const u64 i = y*g_st->max_col+x;
 	return (i > g_st->grid_length) ? 0 : i;
 }
@@ -557,6 +651,7 @@ int ray_cast(int src_x, int src_y, int dst_x, int dst_y, int* hit_x, int* hit_y)
 
 	return hit;
 }
+*/
 
 u8 inside_rect(int rect_x, int rect_y, int rect_w, int rect_h, int x, int y) {
 	return (x >= rect_x && y >= rect_y) && (x <= rect_x+rect_w && y <= rect_y+rect_h);

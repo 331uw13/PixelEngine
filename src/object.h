@@ -10,20 +10,20 @@
 
 
 struct object_t {
-	u8    loaded;
 	char*  texture_data;
 	u64   texture_size;
 	u32   texture_pixels;
-	int x;
-	int y;
+	u8    loaded;
 };
 
 
+#define OBJECT struct object_t*
 
-void unload_object(struct object_t* obj);
+
+void unload_object(OBJECT obj);
 
 // Create an object from memory
-int load_object_mem(struct object_t* obj, char* data, u64 size);
+int load_object_mem(OBJECT obj, char* data, u64 size);
 
 
 // TODO:

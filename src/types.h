@@ -9,7 +9,6 @@ typedef unsigned char      u8;
 
 
 
-
 // TODO: move these
 #define PIXEL_SIZE 8
 #define TEXTURE_PIXEL_LENGTH (5*sizeof(char))
