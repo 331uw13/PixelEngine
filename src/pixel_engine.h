@@ -47,6 +47,8 @@ struct particle_t {
 	float vy;
 	float lifetime;
 	float max_lifetime;
+	
+	u16 u[2]; // for user
 };
 
 struct particle_system_t {
@@ -60,7 +62,7 @@ struct particle_system_t {
 	
 	void(*update_callback)(PARTICLE p, STATE st);
 	
-	int u[2];  // for storing user values
+	u16 u[2];  // for user
 };
 
 
@@ -77,10 +79,10 @@ void _draw_f(float x, float y, float w, float h);
 // TODO: change all dimensions to integer type
 
 void draw_pixel(u32 x, u32 y);
+void draw_object(OBJECT obj, u32 x, u32 y);
 
 /*
 void draw_area(int x, int y, int w, int h, u8 always_visible);
-void draw_object(struct object_t* obj, int x, int y, u8 always_visible);
 void draw_line(u16 x0, u16 y0, u16 x1, u16 y1, u8 always_visible);
 void draw_box_outline(int x, int y, int w, int h, u8 always_visible);
 */

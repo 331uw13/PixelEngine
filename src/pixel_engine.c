@@ -18,6 +18,8 @@ static int always_visible_uniform = 0;
 
 static u32 light_ubo = 0;
 static u64 light_ubo_size = 0;
+static u64 min_access_index = 0;
+static u64 max_access_index = 0;
 
 static float g_use_rgb[3];
 
@@ -82,7 +84,7 @@ PARTICLE_SYSTEM create_particle_system(
 				p->rgb[1] = 16;
 				p->rgb[2] = 16;
 				p->index = i;
-				p->dead  = can_die;
+				p->dead  = 1;
 				
 				p->x = 0.0;
 				p->y = 0.0;
@@ -133,12 +135,7 @@ void update_particles(PARTICLE_SYSTEM system) {
 				p->lifetime += g_st->dt;
 			}
 
-
 			system->update_callback(p, g_st);
-		
-			if(!p->dead) {
-				draw_pixel(p->x, p->y);
-			}
 		}
 	}
 
@@ -154,7 +151,10 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 	always_visible_uniform = 0;
 	light_ubo = 0;
 	light_ubo_size = 0;
-	
+
+	min_access_index = 0;
+	max_access_index = 0;
+
 	g_use_rgb[0] = 0.0;
 	g_use_rgb[1] = 0.0;
 	g_use_rgb[2] = 0.0;
@@ -168,8 +168,6 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 	g_st->time = 0.0;
 	g_st->vao = 0;
 	g_st->vbo = 0;
-	g_st->pixel_data = NULL;
-	g_st->pixel_mem_length = 0;
 
 	set_seed(time(0));
 
@@ -270,31 +268,23 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 
 	g_st->num_pixels = g_st->max_col*g_st->max_row;
 	const u32 stride = sizeof(float)*5;
-
-	g_st->pixel_mem_length = stride*g_st->num_pixels;
-
-
-	g_st->pixel_data = malloc(g_st->pixel_mem_length);
+	g_st->buffer_length = stride*g_st->num_pixels;
+	g_st->buffer = NULL;
 	//printf("%p, %li\n", pixels, vbo_size);
 	
-	if(g_st->pixel_data != NULL) {		
-		glGenVertexArrays(1, &g_st->vao);
-		glBindVertexArray(g_st->vao);
+	glGenVertexArrays(1, &g_st->vao);
+	glBindVertexArray(g_st->vao);
 
-		glGenBuffers(1, &g_st->vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, g_st->vbo);
+	glGenBuffers(1, &g_st->vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, g_st->vbo);
 
-		glBufferData(GL_ARRAY_BUFFER, g_st->pixel_mem_length, g_st->pixel_data, GL_STREAM_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, g_st->buffer_length, NULL, GL_STREAM_DRAW);
 
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, 0);
-		glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, 0);
+	glEnableVertexAttribArray(0);
 
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float)*2));
-		glEnableVertexAttribArray(1);
-	}
-	else {
-		fprintf(stderr, "failed to allocate memory for pixel data\nerrno:%i\n", errno);
-	}
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float)*2));
+	glEnableVertexAttribArray(1);
 
 
 	entity_set_next_id(0);
@@ -328,6 +318,7 @@ void _draw_f(float x, float y, float w, float h) {
 	glUniform2f(size_uniform, -1, -1);
 }
 
+
 void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
 	const char* fragment_source = 
 		"#version 330\n"
@@ -339,7 +330,6 @@ void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
 		"uniform vec2 pos;"
 		"uniform vec2 size;"
 		"uniform int  always_visible;" //  !!! TODO: remove branching from shaders!
-
 
 		"in vec2 f_pos;"
 		"in vec3 f_col;"
@@ -379,6 +369,8 @@ void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
 			"gl_FragColor = vec4(col*i, 1.0);"
 			*/
 		"}";
+
+
 
 	const char* vertex_source =
 		"#version 330\n"
@@ -422,8 +414,10 @@ void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
 	}
 
 
-
 	glBindBuffer(GL_ARRAY_BUFFER, g_st->vbo);
+	
+	const u32 off = sizeof(float)*5;
+
 
 	while(!glfwWindowShouldClose(window)) {
 		g_st->time = glfwGetTime();
@@ -431,26 +425,24 @@ void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
 		glfwPollEvents();
 		glClear(GL_COLOR_BUFFER_BIT);
 	
-
-		memset(g_st->pixel_data, 0, g_st->pixel_mem_length);
-
-
-		glUseProgram(program);
+		g_st->buffer = (float*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
 	
-	
-		callback(g_st);
+		if(g_st->buffer != NULL) {
+			memset(g_st->buffer, -2, g_st->buffer_length);
 
-		if(g_st->flags & FLG_VBO_UPDATE) {
-		
-			glBufferSubData(GL_ARRAY_BUFFER, 0, g_st->pixel_mem_length, g_st->pixel_data);
-			g_st->flags &= ~FLG_VBO_UPDATE;
-		
+			glUseProgram(program);
+			callback(g_st);
+
+			glUnmapBuffer(GL_ARRAY_BUFFER);
+			g_st->buffer = NULL;
+
+			glBindVertexArray(g_st->vao);
+
+			glDrawArrays(GL_POINTS, 0, g_st->num_pixels);
 		}
-		
-		glBindVertexArray(g_st->vao);
-		glDrawArrays(GL_POINTS, 0, g_st->num_pixels);
-
+	
 		glfwSwapBuffers(window);
+
 		g_st->dt = glfwGetTime()-g_st->time;
 
 		second_counter += glfwGetTime()-g_st->time;
@@ -472,7 +464,6 @@ void shutdown_engine() {
 		glDeleteVertexArrays(1, &g_st->vao);
 		glDeleteBuffers(1, &g_st->vbo);
 		
-		free(g_st->pixel_data);
 		free(g_st->grid);
 		free(g_st);
 	}
@@ -491,33 +482,24 @@ void shutdown_engine() {
 }
 
 void draw_pixel(u32 x, u32 y) {
-
-	const u32 i = (y*g_st->max_col+(x*5));
+	u32 i = (y*g_st->max_col+x);
 	
 	if(i < g_st->num_pixels) {
-		g_st->pixel_data[i]   = map(x, 0, g_st->max_col, -1.0,  1.0);
-		g_st->pixel_data[i+1] = map(y, 0, g_st->max_row,  1.0, -1.0);
-		g_st->pixel_data[i+2] = 1.0;
-		g_st->pixel_data[i+3] = 1.0;
-		g_st->pixel_data[i+4] = 1.0;
+		i *= 5;
+
+		g_st->buffer[i]   = map(x, 0, g_st->max_col, -1.0,  1.0);
+		g_st->buffer[i+1] = map(y, 0, g_st->max_row,  1.0, -1.0);
+		g_st->buffer[i+2] = g_use_rgb[0];
+		g_st->buffer[i+3] = g_use_rgb[1];
+		g_st->buffer[i+4] = g_use_rgb[2];
 
 		g_st->flags |= FLG_VBO_UPDATE;
 	}
+
 }
 
 
 /*
-void draw_pixel(int x, int y, u8 always_visible) {
-	float rx = map(x*PIXEL_SIZE, 0.0, g_st->window_width, -1.0, 1.0);
-	float ry = map(y*PIXEL_SIZE, 0.0, g_st->window_height, 1.0, -1.0);
-	
-	glUniform1i(always_visible_uniform, always_visible); // TODO: this is bad, dont do this here
-	glUniform2f(position_uniform, rx, ry);
-	
-	glBegin(GL_POINTS);
-	glVertex2f(rx, ry);
-	glEnd();
-}
 
 void draw_area(int x, int y, int w, int h, u8 always_visible) {
 	if(w > 0 && h > 0) {
@@ -526,7 +508,16 @@ void draw_area(int x, int y, int w, int h, u8 always_visible) {
 	}
 }
 
-void draw_object(OBJECT obj, int x, int y, u8 always_visible) {
+void draw_box_outline(int x, int y, int w, int h, u8 always_visible) {
+	draw_area(x, y, w, 1, always_visible);
+	draw_area(x, y+h, w, 1, always_visible);
+	draw_area(x, y, 1, h, always_visible);
+	draw_area(x+w, y, 1, h+1, always_visible);
+}
+
+
+*/
+void draw_object(OBJECT obj, u32 x, u32 y) {
 	if(obj != NULL && obj->texture_data != NULL && obj->loaded) {
 		u32 p = 0;
 		for(u32 i = 0; i < obj->texture_pixels; i++) {
@@ -537,7 +528,7 @@ void draw_object(OBJECT obj, int x, int y, u8 always_visible) {
 					);
 			draw_pixel(
 					x+obj->texture_data[p],
-				   	y+obj->texture_data[p+1], always_visible);
+				   	y+obj->texture_data[p+1]);
 
 			p += 5;
 		}
@@ -570,7 +561,7 @@ void draw_line(u16 x0, u16 y0, u16 x1, u16 y1, u8 always_visible) {
 	int numerator = longest >> 1;
 	
 	for(int i = 0; i < longest; i++) {
-		draw_pixel(x0, y0, always_visible);
+		draw_pixel(x0, y0);
 		numerator += shortest;
 		if(numerator > longest) {
 			numerator -= longest;
@@ -584,14 +575,6 @@ void draw_line(u16 x0, u16 y0, u16 x1, u16 y1, u8 always_visible) {
 	}
 	
 }
-
-void draw_box_outline(int x, int y, int w, int h, u8 always_visible) {
-	draw_area(x, y, w, 1, always_visible);
-	draw_area(x, y+h, w, 1, always_visible);
-	draw_area(x, y, 1, h, always_visible);
-	draw_area(x+w, y, 1, h+1, always_visible);
-}
-
 u64 grid_index(u32 x, u32 y) {
 	const u64 i = y*g_st->max_col+x;
 	return (i > g_st->grid_length) ? 0 : i;
@@ -651,7 +634,6 @@ int ray_cast(int src_x, int src_y, int dst_x, int dst_y, int* hit_x, int* hit_y)
 
 	return hit;
 }
-*/
 
 u8 inside_rect(int rect_x, int rect_y, int rect_w, int rect_h, int x, int y) {
 	return (x >= rect_x && y >= rect_y) && (x <= rect_x+rect_w && y <= rect_y+rect_h);

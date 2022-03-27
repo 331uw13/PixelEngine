@@ -14,12 +14,12 @@ WEAPON create_weapon() {
 		w->rgb[2] = 16;
 		w->damage = 50;
 		w->projectile_count = 1;
-		w->projectile_speed = 100;
+		w->projectile_speed = 320;
 		w->critical = 30;
 		w->max_energy = 100;
-		w->energy_regen_rate = 0.5;
+		w->energy_regen_rate = 0.8;
 		w->energy = w->max_energy;
-		w->shoot_rate = 0.1;
+		w->shoot_rate = 0.25;
 		w->last_shot_time = 0.0;
 		w->dt = 0.0;
 		w->data = NULL;
@@ -50,13 +50,11 @@ void weapon_update(WEAPON w) {
 				}
 			}
 		}
-
-
 	}
 }
 
 u8 weapon_can_shoot(WEAPON w) {
-	return (w && w->usable && (w->dt > w->shoot_rate || w->last_shot_time <= 0.0));
+	return (w && w->usable && (w->dt > w->shoot_rate));
 }
 
 u16 weapon_get_damage(WEAPON w) {
@@ -73,14 +71,16 @@ u16 weapon_get_damage(WEAPON w) {
 }
 
 u16 weapon_shoot(WEAPON w) {
+	u16 d = 0;
 	if(weapon_can_shoot(w)) {
 		w->last_shot_time = glfwGetTime();
-
+		d = weapon_get_damage(w);
+		w->energy -= 1.0/w->dt;
+		if(w->energy < 0.0) {
+			w->energy = 0.0;
+		}
 	}
 
-	return weapon_get_damage(w);
+	return d;
 }
-
-
-
 

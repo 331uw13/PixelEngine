@@ -9,8 +9,8 @@
 
 struct entity_t {
 	u32    id;
-	u16    health;
-	u16    max_health;
+	int    health;
+	int    max_health;
 	u8     dead;
 
 	float  x;
@@ -28,6 +28,7 @@ ENTITY create_entity();
 void   destroy_entity(ENTITY ent);
 void   entity_set_next_id(u32 id);
 
+void   update_entity(ENTITY ent);
 
 
 

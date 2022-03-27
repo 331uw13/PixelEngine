@@ -31,11 +31,11 @@ struct g_state_t {
 
 	u8* grid;
 	u64 grid_length;
-	
+
 	struct light_t lights[MAX_LIGHTS];
 
-	float*   pixel_data;
-	u64      pixel_mem_length;
+	float*   buffer;
+	u64      buffer_length;
 
 	u32      vbo;
 	u32      vao;

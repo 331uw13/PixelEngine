@@ -23,7 +23,7 @@ struct object_t {
 void unload_object(OBJECT obj);
 
 // Create an object from memory
-int load_object_mem(OBJECT obj, char* data, u64 size);
+OBJECT load_object_mem(char* data, u64 size);
 
 
 // TODO:

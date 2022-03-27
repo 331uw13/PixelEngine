@@ -22,6 +22,7 @@ ENTITY create_entity() {
 
 		e->id = g_entity_counter;
 		g_entity_counter++;
+
 	}
 
 	return e;
@@ -37,3 +38,19 @@ void entity_set_next_id(u32 id) {
 	g_entity_counter = id;
 }
 
+void update_entity(ENTITY ent) {
+	if(ent != NULL) {
+		if(ent->health > ent->max_health) {
+			ent->health = ent->max_health;
+		}
+		else if(ent->health <= 0) {
+			ent->dead = 1;
+		}
+
+		if(ent->weapon != NULL) {
+			weapon_update(ent->weapon);
+		}
+
+
+	}
+}

@@ -10,32 +10,31 @@ void unload_object(OBJECT obj) {
 	if(obj != NULL) {
 		if(obj->texture_data != NULL) {
 			free(obj->texture_data);
-			obj->loaded = 0;
 		}
+		free(obj);
 	}
 }
 
-int load_object_mem(OBJECT obj, char* data, u64 size) {
-	int res = 0;
+OBJECT load_object_mem(char* data, u64 size) {
+	OBJECT obj = malloc(sizeof *obj);
 
 	if(obj != NULL) {
-		
-		if((obj->texture_data = malloc(size))) {
-			if(memmove(obj->texture_data, data, size)) {
-				obj->loaded = 1;
-				res = 1;
-			
-				obj->texture_size = size;
-				obj->texture_pixels = size/TEXTURE_PIXEL_LENGTH;
-			}
+		obj->loaded = 0;
+		obj->texture_size = 0;
+		obj->texture_pixels = 0;
+		obj->texture_data = malloc(size);
+		if(obj->texture_data != NULL) {
+			memmove(obj->texture_data, data, size);
+			obj->texture_size = size;
+			obj->texture_pixels = size/TEXTURE_PIXEL_LENGTH;
+			obj->loaded = 1;
 		}
+
 	}
 
-	if(res <= 0) {
-		res = errno;
-	}
 
-	return res;
+
+	return obj;
 }
 
 
