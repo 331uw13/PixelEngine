@@ -51,6 +51,8 @@ Work in progress.
     ```bash
     cmake .
     make
-    ./testing/a.out
+    cd testing
+    ./build.sh
+    ./a.out
     ```
 
