@@ -46,13 +46,13 @@ Work in progress.
     cd PixelEngine
     ```
 
-3. Build and run the project
+3. Build and test the project
 
     ```bash
     cmake .
     make
     cd testing
-    ./build.sh
+    ./test.sh
     ./a.out
     ```
 
