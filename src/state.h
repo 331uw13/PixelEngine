@@ -2,24 +2,18 @@
 #define PIXEL_ENGINE_STATE_H
 
 
-#define FLG_INIT_FULLSCREEN (1<<0)
-#define FLG_VBO_UPDATE      (1<<1)
+#define FLG_INIT_FULLSCREEN 0x1
+#define FLG_INIT_WINDOW_BORDER 0x4
 
-#define MAX_LIGHTS 8
-
-struct light_t {
-	float brightness;
-	float x;
-	float y;
-	float _reserved;
-};
+#define RENDER_MODE_WAIT_EVENTS 0x2
+#define RENDER_MODE_UPDATE_FRAME 0x3
 
 
 struct g_state_t {
 	int      flags;
+	int      render_mode;
 	double   time;
 	double   dt;    // frame delta time
-	u8       active_light_count;
 
 	int      fps;
 	int      max_fps;
@@ -32,8 +26,6 @@ struct g_state_t {
 	u8* grid;
 	u64 grid_length;
 
-	struct light_t lights[MAX_LIGHTS];
-
 	float*   buffer;
 	u64      buffer_length;
 
@@ -41,7 +33,7 @@ struct g_state_t {
 	u32      vao;
 };
 
-#define STATE           struct g_state_t*
+#define STATE struct g_state_t*
 
 
 

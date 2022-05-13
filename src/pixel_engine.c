@@ -1,4 +1,6 @@
 #include <sys/unistd.h>
+#include <zlib.h>
+#include <math.h>
 
 #include "pixel_engine.h"
 #include "utils.h"
@@ -6,23 +8,15 @@
 
 
 //#define DEBUG
-#define _SSTRCTL sizeof(struct light_t)
 
 static GLFWwindow* window = NULL;
 static STATE g_st = NULL;
 
-static int color_uniform = 0;
-static int position_uniform = 0;
-static int size_uniform = 0;
-static int always_visible_uniform = 0;
-
-static u32 light_ubo = 0;
-static u64 light_ubo_size = 0;
 static u64 min_access_index = 0;
 static u64 max_access_index = 0;
 
 static float g_use_rgb[3];
-
+static int g_program = 0;
 
 
 void use_color(u8 r, u8 g, u8 b) {
@@ -35,21 +29,11 @@ void back_color(u8 r, u8 g, u8 b) {
 	glClearColor((float)r/15.0, (float)g/15.0, (float)b/15.0, 1.0);
 }
 
-void update_light(u32 index) {
-	if(index < MAX_LIGHTS) {
-		if(light_ubo != 0 && light_ubo_size != 0) {
-
-			// NOTE: binding and unbinding this buffer object may not be needed everytime...
-			glBindBuffer(GL_UNIFORM_BUFFER, light_ubo);
-			
-			glBufferSubData(GL_UNIFORM_BUFFER, _SSTRCTL*index, _SSTRCTL, &g_st->lights[index]);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-		}
-	}
-}
-
-void update_lights() {
-	glBufferData(GL_UNIFORM_BUFFER, light_ubo_size, g_st->lights, GL_STREAM_DRAW);
+void dim_color(u8 v) {
+	float f = v/16.0;
+	g_use_rgb[0] -= f;
+	g_use_rgb[1] -= f;
+	g_use_rgb[2] -= f;
 }
 
 PARTICLE_SYSTEM create_particle_system(
@@ -71,7 +55,6 @@ PARTICLE_SYSTEM create_particle_system(
 			
 			system->particle_count = particle_count;
 			system->can_die   = can_die;
-			system->always_visible = 1;
 			system->last_dead = 0;
 			system->u[0] = 0;
 			system->u[1] = 0;
@@ -114,11 +97,11 @@ void destroy_particle_system(PARTICLE_SYSTEM system) {
 	}
 }
 
-void update_particles(PARTICLE_SYSTEM system) {
+void update_particles(PARTICLE_SYSTEM system, u32 num) {
 	if(system != NULL && system->particles != NULL) {
 		PARTICLE p = NULL;
 
-		for(u32 i = 0; i < system->particle_count; i++) {
+		for(u32 i = 0; i < num; i++) {
 			p = &system->particles[i];
 
 			if(!p->dead) {
@@ -141,19 +124,35 @@ void update_particles(PARTICLE_SYSTEM system) {
 
 }
 
+void particles_from_entity(PARTICLE_SYSTEM system, ENTITY ent, void(*callback)(PARTICLE)) {
+	if(system && ent->obj) {
+		u32 count = (ent->obj->texture_pixels > system->particle_count) ? 
+			system->particle_count : ent->obj->texture_pixels;
+
+		u32 j = 0;
+		for(u32 i = 0; i < count; i++) {
+			PARTICLE p = &system->particles[i];
+			p->x = ent->x+ent->obj->texture_data[j];
+			p->y = ent->y+ent->obj->texture_data[j+1];
+			memmove(p->rgb, ent->obj->texture_data+j+2, 3);
+			p->dead = 0;
+			callback(p);
+
+			j += 5;
+		}
+
+	}
+}
+
+
 void init_engine(char* title, u16 width, u16 height, int flags) {
 	
 	window = NULL;
 	g_st = NULL;
-	color_uniform = 0;
-	position_uniform = 0;
-	size_uniform = 0;
-	always_visible_uniform = 0;
-	light_ubo = 0;
-	light_ubo_size = 0;
 
 	min_access_index = 0;
 	max_access_index = 0;
+	g_program = 0;
 
 	g_use_rgb[0] = 0.0;
 	g_use_rgb[1] = 0.0;
@@ -164,7 +163,7 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 		return;
 	}
 
-	g_st->flags = 0;
+	g_st->flags = flags;
 	g_st->time = 0.0;
 	g_st->vao = 0;
 	g_st->vbo = 0;
@@ -180,7 +179,7 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+	glfwWindowHint(GLFW_DECORATED, (flags & FLG_INIT_WINDOW_BORDER));
 	glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
 	glfwWindowHint(GLFW_CENTER_CURSOR, GLFW_TRUE);
 
@@ -197,12 +196,7 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 	glfwGetMonitorWorkarea(glfwGetPrimaryMonitor(), &mon_x, &mon_y, &mon_w, &mon_h);
 	
 	if(flags & FLG_INIT_FULLSCREEN) {	
-		#ifdef DEBUG
-		mon_w/=2;
-		mon_h/=2;
-		mon_x += mon_w;
-		#endif
-
+		glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
 	}
 	else {
 		mon_x = mon_w/2-(width/2);
@@ -221,10 +215,8 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 	
 
 	glfwSetWindowPos(window, mon_x, mon_y);
-	
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1);
-
+	//glfwSwapInterval(1);
 	glfwGetWindowSize(window, &g_st->window_width, &g_st->window_height);
 
 	if(g_st->window_width*g_st->window_height <= 0) {
@@ -236,9 +228,8 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 	g_st->max_col = g_st->window_width/PIXEL_SIZE;
 	g_st->max_row = g_st->window_height/PIXEL_SIZE;
 
-#ifndef DEBUG
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-#endif
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+
 	if(glewInit() != GLEW_OK) {
 		fprintf(stderr, "glew failed!\n");
 		shutdown_engine();
@@ -254,17 +245,6 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 	}
 	
 	memset(g_st->grid, 0, g_st->grid_length);
-
-	light_ubo_size = MAX_LIGHTS*sizeof *g_st->lights;
-
-	glGenBuffers(1, &light_ubo);
-	glBindBuffer(GL_UNIFORM_BUFFER, light_ubo);
-	glBufferData(GL_UNIFORM_BUFFER, light_ubo_size, NULL, GL_STREAM_DRAW);
-	
-	glBindBufferRange(GL_UNIFORM_BUFFER, LIGHT_UBO_BINDING, light_ubo, 0, light_ubo_size);
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-
 
 	g_st->num_pixels = g_st->max_col*g_st->max_row;
 	const u32 stride = sizeof(float)*5;
@@ -289,122 +269,38 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 
 	entity_set_next_id(0);
 	g_st->max_fps = 60;
+	g_st->render_mode = RENDER_MODE_UPDATE_FRAME;
 }
-
-void _draw_f(float x, float y, float w, float h) {
-
-	// TODO: FIX THIS!
-
-	float rx = map(x*PIXEL_SIZE, 0.0, g_st->window_width,  -1.0,  1.0);
-	float ry = map(y*PIXEL_SIZE, 0.0, g_st->window_height,  1.0, -1.0);
-	
-	rx += PIXEL_SIZE/(float)g_st->window_width;
-	ry += PIXEL_SIZE/(float)g_st->window_height;
-
-	const float rw = w/g_st->max_col;
-	const float rh = h/g_st->max_row;
-	
-	glUniform2f(size_uniform, rw, rh);
-	glUniform2f(position_uniform, rx, ry);
-	
-	glBegin(GL_QUADS);
-	glVertex2f(rx, ry);
-	glVertex2f(rx+rw, ry);
-	glVertex2f(rx+rw, ry-rh);
-	glVertex2f(rx, ry-rh);
-
-
-	glEnd();
-	glUniform2f(size_uniform, -1, -1);
-}
-
 
 void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
+	
+	// create default shader
 	const char* fragment_source = 
 		"#version 330\n"
-		"#ifdef GL_ARB_shading_language_420pack\n"
-		"#extension GL_ARB_shading_language_420pack : require\n"
-		"#endif\n"
-		
-		"uniform vec3 color;"
-		"uniform vec2 pos;"
-		"uniform vec2 size;"
-		"uniform int  always_visible;" //  !!! TODO: remove branching from shaders!
-
-		"in vec2 f_pos;"
 		"in vec3 f_col;"
-
-		"struct light_t {"
-			"float brightness;"
-			"vec2 pos;"
-			"float _r;"
-		"};"
-
-		"\n"
-		
-		"layout(std140, binding = 1) uniform light_array {"
-			"light_t lights[8];\n"
-		"};\n"
-
-
-		// TODO: make lights better (later..)
-
-		"\n"
-		"#define BRIGHTNESS 0.8\n"
-		"#define L 0.6\n"
-		"#define Q 0.5\n"
 
 		"void main() {"
 			"vec3 col = f_col;"
-			
 			"gl_FragColor = vec4(col, 1.0);"
-
-			/*
-			"float l = distance(pos, lights[0].pos);"
-			"l = floor(l*25.0)*0.2;"
-			"float i = BRIGHTNESS/(1.0+L*l+Q*pow(l,2.0));"
-			
-			"vec3 lcolor = vec3(1.0, 0.7, 0.56);"
-
-			"gl_FragColor = vec4(col*i, 1.0);"
-			*/
 		"}";
-
-
 
 	const char* vertex_source =
 		"#version 330\n"
 		"layout(location = 0) in vec2 i_pos;"
 		"layout(location = 1) in vec3 i_col;"
 		
-		"out vec2 f_pos;"
 		"out vec3 f_col;"
 
 		"void main() {"
 			"gl_Position = vec4(i_pos.x, i_pos.y, 0.0, 1.0);"
-			"f_pos = i_pos;"
 			"f_col = i_col;"
 		"}"
 		;
 
-	const u32 program = create_shader(vertex_source, fragment_source);
+	g_program = create_shader(vertex_source, fragment_source);
 
 	glPointSize(PIXEL_SIZE);
-	
-	glUseProgram(program);
-	color_uniform      = glGetUniformLocation(program, "color");
-	position_uniform   = glGetUniformLocation(program, "pos");
-	size_uniform       = glGetUniformLocation(program, "size");
-	always_visible_uniform  = glGetUniformLocation(program, "always_visible");
-
-	for(int i = 0; i < MAX_LIGHTS; i++) {
-		g_st->lights[i].brightness = 0.0;
-		g_st->lights[i].x = 0.0;
-		g_st->lights[i].y = 0.0;
-		g_st->lights[i]._reserved = 0.0;
-		update_light(i);
-	}
-
+	glUseProgram(g_program);
 
 	int frames = 0;
 	double second_counter = 0.0;
@@ -415,14 +311,11 @@ void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
 
 
 	glBindBuffer(GL_ARRAY_BUFFER, g_st->vbo);
-	
-	const u32 off = sizeof(float)*5;
-
+	glfwWaitEventsTimeout(1.0);
 
 	while(!glfwWindowShouldClose(window)) {
 		g_st->time = glfwGetTime();
 
-		glfwPollEvents();
 		glClear(GL_COLOR_BUFFER_BIT);
 	
 		g_st->buffer = (float*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
@@ -430,14 +323,13 @@ void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
 		if(g_st->buffer != NULL) {
 			memset(g_st->buffer, -2, g_st->buffer_length);
 
-			glUseProgram(program);
+			glUseProgram(g_program);
 			callback(g_st);
 
 			glUnmapBuffer(GL_ARRAY_BUFFER);
 			g_st->buffer = NULL;
 
 			glBindVertexArray(g_st->vao);
-
 			glDrawArrays(GL_POINTS, 0, g_st->num_pixels);
 		}
 	
@@ -454,9 +346,15 @@ void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
 
 			frames = 0;
 		}
+		if(g_st->render_mode == RENDER_MODE_WAIT_EVENTS) {
+			glfwWaitEvents();
+		}
+		else {
+			glfwPollEvents();
+		}
 	}
 	
-	glDeleteProgram(program);
+	glDeleteProgram(g_program);
 }
 
 void shutdown_engine() {
@@ -469,9 +367,6 @@ void shutdown_engine() {
 	}
 	
 	if(window != NULL) {
-		if(light_ubo > 0) {
-			glDeleteBuffers(1, &light_ubo);
-		}
 		glfwDestroyWindow(window);
 	
 	}
@@ -479,6 +374,38 @@ void shutdown_engine() {
 	glfwTerminate();
 	puts("exit.");
 	exit(0);
+}
+
+void _draw_f(float x, float y, float w, float h) {
+
+	// TODO: FIX THIS!
+
+	float rx = map(x*PIXEL_SIZE, 0.0, g_st->window_width,  -1.0,  1.0);
+	float ry = map(y*PIXEL_SIZE, 0.0, g_st->window_height,  1.0, -1.0);
+	
+	rx += PIXEL_SIZE/(float)g_st->window_width;
+	ry += PIXEL_SIZE/(float)g_st->window_height;
+
+	const float rw = w/g_st->window_width;
+	const float rh = h/g_st->window_height;
+
+
+
+	glUseProgram(0);
+	glColor3f(g_use_rgb[0], g_use_rgb[1], g_use_rgb[2]);
+
+	glBegin(GL_QUADS);
+	glVertex2f(rx, ry);
+	glVertex2f(rx+rw, ry);
+	glVertex2f(rx+rw, ry-rh);
+	glVertex2f(rx, ry-rh);
+
+	glEnd();
+	glUseProgram(g_program);
+}
+
+void draw_area(float x, float y, float w, float h) {
+	_draw_f(x, y, w*PIXEL_SIZE*2, h*PIXEL_SIZE*2);
 }
 
 void draw_pixel(u32 x, u32 y) {
@@ -493,11 +420,9 @@ void draw_pixel(u32 x, u32 y) {
 		g_st->buffer[i+3] = g_use_rgb[1];
 		g_st->buffer[i+4] = g_use_rgb[2];
 
-		g_st->flags |= FLG_VBO_UPDATE;
 	}
 
 }
-
 
 /*
 
@@ -518,24 +443,43 @@ void draw_box_outline(int x, int y, int w, int h, u8 always_visible) {
 
 */
 void draw_object(OBJECT obj, u32 x, u32 y) {
-	if(obj != NULL && obj->texture_data != NULL && obj->loaded) {
-		u32 p = 0;
-		for(u32 i = 0; i < obj->texture_pixels; i++) {
-			use_color(
-					obj->texture_data[p+2],
-					obj->texture_data[p+3],
-					obj->texture_data[p+4]
-					);
-			draw_pixel(
-					x+obj->texture_data[p],
-				   	y+obj->texture_data[p+1]);
+	if(obj != NULL && obj->texture_data != NULL) {
+		if(obj->flags & OBJ_FLG_LOADED && obj->flags & OBJ_FLG_VISIBLE) {
+			u32 p = 0;
+			if(obj->blink > 0.0) {
+				obj->counter += g_st->dt;
+				if(obj->counter > obj->blink_rate) {
+					if(obj->counter > obj->blink_rate*2.0) {
+						obj->counter = 0.0;
+					}
+					return;
+				}
+				obj->blink -= g_st->dt;
+			}
 
-			p += 5;
+			if(obj->shake > 0.0) {
+				x += randomi(-obj->shake_x,obj->shake_x);
+				y += randomi(-obj->shake_y,obj->shake_y);
+				obj->shake -= g_st->dt;
+			}
+
+			for(u32 i = 0; i < obj->texture_pixels; i++) {
+				use_color(
+						obj->texture_data[p+2],
+						obj->texture_data[p+3],
+						obj->texture_data[p+4]
+						);
+				draw_pixel(
+						x+obj->texture_data[p],
+						y+obj->texture_data[p+1]);
+
+				p += 5;
+			}
 		}
 	}
 }
 
-void draw_line(u16 x0, u16 y0, u16 x1, u16 y1, u8 always_visible) {
+void draw_line(u16 x0, u16 y0, u16 x1, u16 y1) {
 	int width = x1-x0;
 	int height = y1-y0;
 	int dx0 = 0;
@@ -575,6 +519,17 @@ void draw_line(u16 x0, u16 y0, u16 x1, u16 y1, u8 always_visible) {
 	}
 	
 }
+
+void rotate(float x, float y, float* x_out, float* y_out, float angle) {
+	if(x_out) {
+		*x_out = x*cos(angle)-y*sin(angle);
+	}
+	if(y_out) {
+		*y_out = x*sin(angle)+y*cos(angle);
+	}
+}
+
+
 u64 grid_index(u32 x, u32 y) {
 	const u64 i = y*g_st->max_col+x;
 	return (i > g_st->grid_length) ? 0 : i;
@@ -639,9 +594,125 @@ u8 inside_rect(int rect_x, int rect_y, int rect_w, int rect_h, int x, int y) {
 	return (x >= rect_x && y >= rect_y) && (x <= rect_x+rect_w && y <= rect_y+rect_h);
 }
 
-
 GLFWwindow* engine_win() {
 	return window;
 }
+
+void refresh_font_values(FONT f) {
+	f->char_width = f->size*(f->glyph_width+f->column_space);
+	f->char_height = f->size*(f->glyph_height+f->row_space);
+}
+
+FONT create_psf2_font(char* path) {
+	FONT f = NULL;
+	gzFile file = NULL;
+
+	file = gzopen(path, "r");
+	if(!file) {
+		fprintf(stderr, "Failed to open font file \"%s\", %p\n", path, path);
+		perror("gzopen");
+		goto giveup;
+	}
+
+	if((f = malloc(sizeof *f)) == NULL) {
+		goto giveup;
+	}
+
+	f->data = NULL;
+	const u64 size = gzfread(f, PSF2_HEADER_SIZE, 1, file); 
+	
+	if(size == 0) {
+		free(f);
+		goto giveup;
+	}
+	
+	if(gzeof(file)) {
+		perror("gzeof");
+		goto giveup;
+	}
+
+	if(
+			f->magic[0] != 0x72 ||
+			f->magic[1] != 0xb5 ||
+			f->magic[2] != 0x4a ||
+			f->magic[3] != 0x86) {
+		fprintf(stderr, "Wrong magic bytes! \"%s\"\n", path);
+		free(f);
+		goto giveup;
+	}
+
+	f->data_size = f->num_glyphs*f->glyph_height;
+
+	if((f->data = malloc(f->data_size)) == NULL) {
+		free(f);
+		goto giveup;
+	}
+		
+	gzfread(f->data, f->data_size, 1, file);
+
+	f->size = 0.5;
+	f->row_space = 2;
+	f->column_space = 2;
+	f->tab_width = 4;
+	f->char_width = 0;
+	f->char_height = 0;
+
+	refresh_font_values(f);
+
+giveup:
+	if(file) {
+		gzclose(file);
+	}
+
+	return f;
+}
+
+void destroy_font(FONT f) {
+	if(f != NULL) {
+		if(f->data != NULL) {
+			free(f->data);
+		}
+		free(f);
+	}
+}
+
+void draw_char(FONT f, char c, float x, float y) {
+	float ox = x;
+	for(u16 i = 0; i < f->glyph_height; i++) {
+		int g = f->data[c*f->glyph_height+i];
+		for(int j = 0; j < 8; j++) {
+			if(g & 0x80) {
+				draw_area(x, y, f->size, f->size);
+			}
+
+			g = g << 1;
+			x += f->size;
+		}
+		y += f->size;
+		x = ox;
+	}
+}
+
+void draw_text(FONT f, char* txt, u64 size, float x, float y) {
+	u64 i = 0;
+	float ox = x;
+
+	while(1) {
+		const char c = *txt;
+		if(c == 0) {
+			break;
+		}
+
+		draw_char(f, c, x, y);
+		x += f->char_width;
+
+		i++;
+		if(size > 0 && i > size) { break; }
+		txt++;
+	}
+
+}
+
+
 
 

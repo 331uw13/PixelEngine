@@ -39,7 +39,7 @@ void entity_set_next_id(u32 id) {
 }
 
 void update_entity(ENTITY ent) {
-	if(ent != NULL) {
+	if(ent) {
 		if(ent->health > ent->max_health) {
 			ent->health = ent->max_health;
 		}
@@ -50,7 +50,29 @@ void update_entity(ENTITY ent) {
 		if(ent->weapon != NULL) {
 			weapon_update(ent->weapon);
 		}
-
-
 	}
 }
+
+void hurt_entity(ENTITY ent, u32 damage) {
+	if(ent) {
+		int h = ent->health-damage;
+		if(h > 0) {
+			ent->health = h;
+		}
+		else {
+			ent->dead = 1;
+			ent->health = 0;
+		}
+	}
+}
+
+void heal_entity(ENTITY ent, u32 amount) {
+	if(ent) {
+		int h = ent->health+amount;
+		if(h < ent->max_health && h > 0) {
+			ent->health = h;
+		}
+	}
+}
+
+

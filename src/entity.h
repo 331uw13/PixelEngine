@@ -9,9 +9,9 @@
 
 struct entity_t {
 	u32    id;
+	u8     dead;
 	int    health;
 	int    max_health;
-	u8     dead;
 
 	float  x;
 	float  y;
@@ -29,7 +29,7 @@ void   destroy_entity(ENTITY ent);
 void   entity_set_next_id(u32 id);
 
 void   update_entity(ENTITY ent);
-
-
+void   hurt_entity(ENTITY ent, u32 damage);
+void   heal_entity(ENTITY ent, u32 amount);
 
 #endif

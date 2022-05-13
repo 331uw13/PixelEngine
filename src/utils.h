@@ -2,6 +2,8 @@
 #define UTILS_H
 
 #define RANDOM_GEN_MAX 0x7FFF
+#define CLAMP_VALUE(a, min, max) (a < min ? min : a > max ? max : a)
+
 
 float normalize(float t, float min, float max);
 float lerp(float t, float min, float max);
