@@ -52,8 +52,8 @@ Work in progress.
     cmake .
     make
     cd testing
-    chmod +x test.sh
-    ./test.sh
+    chmod +x build.sh
+    ./build.sh main.c
     ./a.out
     ```
 
