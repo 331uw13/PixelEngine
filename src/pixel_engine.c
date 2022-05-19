@@ -16,6 +16,7 @@ static u64 min_access_index = 0;
 static u64 max_access_index = 0;
 
 static float g_use_rgb[3];
+static float g_use_rgb_storage[3];
 static int g_program = 0;
 
 
@@ -34,6 +35,21 @@ void dim_color(u8 v) {
 	g_use_rgb[0] -= f;
 	g_use_rgb[1] -= f;
 	g_use_rgb[2] -= f;
+}
+
+void add_color(u8 v) {
+	float f = v/16.0;
+	g_use_rgb[0] += f;
+	g_use_rgb[1] += f;
+	g_use_rgb[2] += f;
+}
+
+void save_color() {
+	memmove(g_use_rgb_storage, g_use_rgb, 3*sizeof *g_use_rgb_storage);
+}
+
+void restore_color() {
+	memmove(g_use_rgb, g_use_rgb_storage, 3*sizeof *g_use_rgb);
 }
 
 PARTICLE_SYSTEM create_particle_system(
@@ -154,9 +170,8 @@ void init_engine(char* title, u16 width, u16 height, int flags) {
 	max_access_index = 0;
 	g_program = 0;
 
-	g_use_rgb[0] = 0.0;
-	g_use_rgb[1] = 0.0;
-	g_use_rgb[2] = 0.0;
+	memset(g_use_rgb, 0, 3*sizeof *g_use_rgb);
+	memset(g_use_rgb_storage, 0, 3*sizeof *g_use_rgb_storage);
 
 	if(!(g_st = malloc(sizeof *g_st))) {
 		fprintf(stderr, "Failed to allocate memory for g_state_t!\n");
@@ -323,8 +338,20 @@ void start_engine(void(*callback)(STATE), void(*start_callback)(STATE)) {
 		if(g_st->buffer != NULL) {
 			memset(g_st->buffer, -2, g_st->buffer_length);
 
+			if(!(g_st->flags & FLG_HIDE_CURSOR)) {
+				glfwGetCursorPos(window, &g_st->mouse_x, &g_st->mouse_y);
+				g_st->mouse_x /= PIXEL_SIZE;
+				g_st->mouse_y /= PIXEL_SIZE;
+			}
+
 			glUseProgram(g_program);
 			callback(g_st);
+
+			if(!(g_st->flags & FLG_HIDE_CURSOR)) {
+				draw_pixel(g_st->mouse_x, g_st->mouse_y);
+				draw_pixel(g_st->mouse_x+1, g_st->mouse_y);
+				draw_pixel(g_st->mouse_x, g_st->mouse_y+1);
+			}
 
 			glUnmapBuffer(GL_ARRAY_BUFFER);
 			g_st->buffer = NULL;
@@ -408,8 +435,10 @@ void draw_area(float x, float y, float w, float h) {
 	_draw_f(x, y, w*PIXEL_SIZE*2, h*PIXEL_SIZE*2);
 }
 
-void draw_pixel(u32 x, u32 y) {
-	u32 i = (y*g_st->max_col+x);
+void draw_pixel(float x, float y) {
+	x = round(x);
+	y = round(y);
+	u32 i = ((int)y*g_st->max_col+(int)x);
 	
 	if(i < g_st->num_pixels) {
 		i *= 5;
@@ -421,28 +450,9 @@ void draw_pixel(u32 x, u32 y) {
 		g_st->buffer[i+4] = g_use_rgb[2];
 
 	}
-
 }
 
-/*
-
-void draw_area(int x, int y, int w, int h, u8 always_visible) {
-	if(w > 0 && h > 0) {
-		glUniform1i(always_visible_uniform, always_visible);
-		_draw_f(x, y, w*2, h*2);
-	}
-}
-
-void draw_box_outline(int x, int y, int w, int h, u8 always_visible) {
-	draw_area(x, y, w, 1, always_visible);
-	draw_area(x, y+h, w, 1, always_visible);
-	draw_area(x, y, 1, h, always_visible);
-	draw_area(x+w, y, 1, h+1, always_visible);
-}
-
-
-*/
-void draw_object(OBJECT obj, u32 x, u32 y) {
+void draw_object(OBJECT obj, float x, float y, int flip_x, int flip_y) {
 	if(obj != NULL && obj->texture_data != NULL) {
 		if(obj->flags & OBJ_FLG_LOADED && obj->flags & OBJ_FLG_VISIBLE) {
 			u32 p = 0;
@@ -469,9 +479,10 @@ void draw_object(OBJECT obj, u32 x, u32 y) {
 						obj->texture_data[p+3],
 						obj->texture_data[p+4]
 						);
+
 				draw_pixel(
-						x+obj->texture_data[p],
-						y+obj->texture_data[p+1]);
+						x+(flip_x ? -obj->texture_data[p]+7 : obj->texture_data[p]-7),
+						y+(obj->texture_data[p+1]));
 
 				p += 5;
 			}
@@ -479,7 +490,7 @@ void draw_object(OBJECT obj, u32 x, u32 y) {
 	}
 }
 
-void draw_line(u16 x0, u16 y0, u16 x1, u16 y1) {
+void draw_line(int x0, int y0, int x1, int y1) {
 	int width = x1-x0;
 	int height = y1-y0;
 	int dx0 = 0;
@@ -519,16 +530,6 @@ void draw_line(u16 x0, u16 y0, u16 x1, u16 y1) {
 	}
 	
 }
-
-void rotate(float x, float y, float* x_out, float* y_out, float angle) {
-	if(x_out) {
-		*x_out = x*cos(angle)-y*sin(angle);
-	}
-	if(y_out) {
-		*y_out = x*sin(angle)+y*cos(angle);
-	}
-}
-
 
 u64 grid_index(u32 x, u32 y) {
 	const u64 i = y*g_st->max_col+x;
@@ -698,6 +699,8 @@ void draw_text(FONT f, char* txt, u64 size, float x, float y) {
 	float ox = x;
 
 	while(1) {
+		if(size > 0 && i > size) { break; }
+		
 		const char c = *txt;
 		if(c == 0) {
 			break;
@@ -707,7 +710,6 @@ void draw_text(FONT f, char* txt, u64 size, float x, float y) {
 		x += f->char_width;
 
 		i++;
-		if(size > 0 && i > size) { break; }
 		txt++;
 	}
 

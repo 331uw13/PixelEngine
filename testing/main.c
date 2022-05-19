@@ -1,23 +1,30 @@
 #include "../src/pixel_engine.h"
-
-#include <math.h>
-#include <time.h>
+#include "../src/utils.h"
 
 #define IS_KEYDOWN(key) glfwGetKey(engine_win(), key) == GLFW_PRESS
-double mx = 0.0;
-double my = 0.0;
-int    mouse_down = 0;
-
-FONT font = NULL;
 
 
-void char_callback(GLFWwindow* win, u32 codepoint) {
-	
-}
+ENTITY player = NULL;
+
+#define NUM_PLAYER_OBJECTS 7
+OBJECT player_objects[NUM_PLAYER_OBJECTS];
+static double anim_counter = 0;
+static int anim_index = 0;
+static int anim_flip_x = 0;
+static int anim_flip_y = 0;
+
 
 void key_callback(GLFWwindow* win, int key, int sc, int act, int mods) {
 	if(act == GLFW_PRESS) {
 		switch(key) {
+
+			case GLFW_KEY_D:
+				anim_index = 3;
+				break;
+			
+			case GLFW_KEY_A:
+				anim_index = 3;
+				break;
 
 			default:break;
 		}
@@ -29,91 +36,107 @@ void handle_player_hold_input(STATE st) {
 		glfwSetWindowShouldClose(engine_win(), 1);
 	}
 
+	if(IS_KEYDOWN(GLFW_KEY_D)) {
+		player->x += st->dt*70.0;
+		anim_flip_x = 0;
+	}
+	else if(IS_KEYDOWN(GLFW_KEY_A)) {
+		player->x -= st->dt*70.0;
+		anim_flip_x = 1;
+	}
+	else {
+		if(anim_index >= 3) {
+			anim_index = 0;
+		}
+	}
+
 }
 
-// - TODO list
-// - fun things when bored
-// 	 - drawing flow line
-// - time
 
-static int g_flags = 0;
-static char g_time_str[8];
-static double g_counter = 0.0;
-static float time_mover = 0.0;
-
-#define FLG_UPDATE_ALL 0x1
-
-void update_time() {
-	time_t t = time(0);
-	struct tm* tm = localtime(&t);
-
-	time_mover = tm->tm_sec;
-
-	snprintf(g_time_str, 6, "%02d:%02d", tm->tm_hour, tm->tm_min);
-	g_time_str[7] = 0;
-}
+static float bx = 50.0;
+static float by = 50.0;
 
 void update(STATE st) {
 	handle_player_hold_input(st);
-	glfwGetCursorPos(engine_win(), &mx, &my);
-	mouse_down = glfwGetMouseButton(engine_win(), GLFW_MOUSE_BUTTON_LEFT);
 
-	mx /= PIXEL_SIZE;
-	my /= PIXEL_SIZE;
-
-	/*
-	g_counter += st->dt;
-	if(g_counter > 1.0 || (g_flags & FLG_UPDATE_ALL)) {
-		update_time();
-		g_counter = 0;
+	anim_counter += st->dt;
+	
+	if(anim_index >= 3) {
+		if(anim_counter > 0.2) {
+			anim_index++;
+			if(anim_index > 6) {
+				anim_index = 3;
+			}
+			anim_counter = 0;
+		}
+	}
+	else {
+		if(anim_counter > 0.9) {
+			anim_index++;
+			if(anim_index > 2) {
+				anim_index = 0;
+			}
+			anim_counter = 0;
+		}
 	}
 
-	use_color(16, 5, 8);
-	draw_text(font, g_time_str, 5, 5, 5);
+	if(IS_KEYDOWN(GLFW_KEY_SPACE)) {
+	 	bx = st->mouse_x;
+		by = st->mouse_y;
+	}
 
-	use_color(3, 2, 3);
-	draw_line(5, font->char_height+5, 65, font->char_height+5);
-	
-	use_color(16, 8, 10);
-	draw_pixel(5+time_mover, font->char_height+5);
-	*/
-
-
+	draw_object(player_objects[anim_index], player->x, player->y, anim_flip_x, 0);
 
 	use_color(16, 16, 10);
-	draw_pixel(mx, my);
-	draw_pixel(mx+1, my);
-	draw_pixel(mx, my+1);
-
-
-	g_flags &= ~FLG_UPDATE_ALL;
 }
 
 void engine_ready(STATE st) {
 	if(st) {
-		g_flags = 0;
-		g_counter = 0.0;
-		time_mover = 0.0;
-		memset(g_time_str, 4, 0);
+		anim_counter = 0.0;
+		anim_index = 0;
+		anim_flip_x = 0;
+		anim_flip_y = 0;
 		back_color(0, 0, 0);
+		player = create_entity();
 
-		g_flags |= FLG_UPDATE_ALL;
+		player->x = st->max_col/2;
+		player->y = st->max_row/2;
+
+		player_objects[0] = create_object_from_file("kitty_idle0");
+		player_objects[1] = create_object_from_file("kitty_idle1");
+		player_objects[2] = create_object_from_file("kitty_idle2");
+		player_objects[3] = create_object_from_file("kitty_run0");
+		player_objects[4] = create_object_from_file("kitty_run1");
+		player_objects[5] = create_object_from_file("kitty_run2");
+		player_objects[6] = create_object_from_file("kitty_run3");
 		
-		st->render_mode = RENDER_MODE_WAIT_EVENTS;
-
 	}
 }
 
+
+void free_memory() {
+	for(int i = 0; i < NUM_PLAYER_OBJECTS; i++) {
+		destroy_object(player_objects[i]);
+	}
+
+	destroy_entity(player);
+}
+
 int main() {
-	init_engine("info_thing", 800, 800, 0);
-	font = create_psf2_font("Topaz.psf.gz");
+	init_engine("default", 800, 800, 0);
 
 	glfwSetKeyCallback(engine_win(), key_callback);
-	glfwSetCharCallback(engine_win(), char_callback);
 	start_engine(update, engine_ready);
 
-	destroy_font(font);
+	free_memory();
 	shutdown_engine();
 	return 0;
 }
+
+
+
+
+
+
+
 

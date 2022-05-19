@@ -3,13 +3,6 @@
 
 #include "types.h"
 
-
-/*
-	Texture data segment: x, y, r, g, b
-
-	// TODO: do this with hexdecimal
-*/
-
 #define OBJ_FLG_LOADED   0x1
 #define OBJ_FLG_VISIBLE  0x4
 
@@ -31,13 +24,11 @@ struct object_t {
 
 
 OBJECT create_object(char* data, u64 size);
+OBJECT create_object_from_file(char* filename);
 void   destroy_object(OBJECT obj);
 
 void   object_set_color(OBJECT obj, u32 start, u32 end, char r, char g, char b);
 void   object_add_color(OBJECT obj, u32 start, u32 end, char r, char g, char b);
-void   object_flip_x(OBJECT obj);
 
-// TODO:
-// int load_object_file(struct object_t* obj, u64 size, char* filename);
 
 #endif

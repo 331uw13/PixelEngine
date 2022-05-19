@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -32,6 +33,31 @@ OBJECT create_object(char* data, u64 size) {
 	return obj;
 }
 
+OBJECT create_object_from_file(char* filename) {
+	OBJECT obj = NULL;
+
+	FILE* f = fopen(filename, "rb");
+	if(f != NULL) {
+		char data[256*5];
+		int pixels = 0;
+
+		while(f) {
+			if(pixels >= 256) { break; }
+			if(feof(f))       { break; }
+			fread(data+(pixels*5), 1, 5, f);
+			pixels++;
+		}
+		pixels--;
+		fclose(f);
+		if(pixels > 0) {
+			obj = create_object(data, pixels*5);
+		}
+
+	}
+
+	return obj;
+}
+
 void destroy_object(OBJECT obj) {
 	if(obj != NULL) {
 		obj->flags = 0;
@@ -41,6 +67,7 @@ void destroy_object(OBJECT obj) {
 		free(obj);
 	}
 }
+
 
 void object_set_color(OBJECT obj, u32 start, u32 end, char r, char g, char b) {
 	u32 j = start;
@@ -66,12 +93,4 @@ void object_add_color(OBJECT obj, u32 start, u32 end, char r, char g, char b) {
 		j += 5;
 	}
 }
-
-void object_flip_x(OBJECT obj) {
-	for(u32 i = 0; i < obj->texture_pixels; i++) {
-		
-
-	}
-}
-
 
